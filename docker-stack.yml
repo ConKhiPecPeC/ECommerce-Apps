@@ -1,0 +1,118 @@
+version: "3.8"
+
+services:
+  shopizer-db:
+    image: mysql/mysql-server:8.0.28
+    container_name: shopizer-db
+    environment:
+      - MYSQL_ROOT_PASSWORD=shopizer123
+      - MYSQL_DATABASE=SALESMANAGER
+      - MYSQL_USER=shopizer_db_user
+      - MYSQL_PASSWORD=shopizer_db_password
+    networks:
+      - shopizer-network
+    ports:
+      - 3307:3306
+    volumes:
+      - ./db:/var/lib/mysql
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: on-failure
+
+  shopizer:
+    image: shopizerecomm/shopizer:latest
+    container_name: shopizer
+    depends_on:
+      - shopizer-db
+    environment:
+      - SPRING_PROFILES_ACTIVE=mysql
+      - db.jdbcUrl=jdbc:mysql://shopizer-db:3306/SALESMANAGER?autoReconnect=true&useUnicode=true&characterEncoding=UTF-8
+      - db.user=shopizer_db_user
+      - db.password=shopizer_db_password
+      - elasticsearch.security.password=NOTREQUIRED
+      - config.cms.contentUrl=http://localhost:8080
+      - config.cms.method=default
+      - elasticsearch.server.host=http://localhost
+      - elasticsearch.server.port=9200
+    networks:
+      - shopizer-network
+    ports:
+      - 8080:8080
+    volumes:
+      - ./files:/files
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: on-failure
+      resources:
+        limits:
+          memory: 2048m
+      
+  shopizer-admin:
+    image: shopizerecomm/shopizer-admin:latest
+    container_name: shopizer-admin
+    environment:
+      - APP_BASE_URL=http://localhost:8080/api
+    networks:
+      - shopizer-network
+    ports:
+      - 4200:4200
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: on-failure
+
+  shopizer-shop:
+    image: shopizerecomm/shopizer-shop-reactjs:latest
+    container_name: shopizer-shop
+    environment:
+      - APP_MERCHANT=DEFAULT
+      - APP_BASE_URL=http://localhost:8080
+    networks:
+      - shopizer-network
+    ports:
+      - 80:80
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: on-failure
+      placement:
+        constraints:
+          - node.role == manager
+          
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - shopizer-network
+    ports:
+      - 9090:9090
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      placement:
+        constraints:
+          - node.role == manager
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    networks:
+      - shopizer-network
+    ports:
+      - 3000:3000
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      placement:
+        constraints:
+          - node.role == manager
+
+networks:
+  shopizer-network:
+    driver: overlay
