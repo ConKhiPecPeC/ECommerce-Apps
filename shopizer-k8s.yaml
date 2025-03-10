@@ -1,0 +1,192 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shopizer-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: shopizer-db
+  template:
+    metadata:
+      labels:
+        app: shopizer-db
+    spec:
+      containers:
+        - name: mysql
+          image: mysql/mysql-server:8.0.28
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              value: "shopizer123"
+            - name: MYSQL_DATABASE
+              value: "SALESMANAGER"
+            - name: MYSQL_USER
+              value: "shopizer_db_user"
+            - name: MYSQL_PASSWORD
+              value: "shopizer_db_password"
+          ports:
+            - containerPort: 3306
+          volumeMounts:
+            - name: mysql-storage
+              mountPath: /var/lib/mysql
+      volumes:
+        - name: mysql-storage
+          persistentVolumeClaim:
+            claimName: mysql-pvc
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: shopizer-db
+spec:
+  ports:
+    - port: 3306
+  selector:
+    app: shopizer-db
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shopizer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: shopizer
+  template:
+    metadata:
+      labels:
+        app: shopizer
+    spec:
+      containers:
+        - name: shopizer
+          image: shopizerecomm/shopizer:latest
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: "mysql"
+            - name: db.jdbcUrl
+              value: "jdbc:mysql://shopizer-db:3306/SALESMANAGER?autoReconnect=true&useUnicode=true&characterEncoding=UTF-8"
+            - name: db.user
+              value: "shopizer_db_user"
+            - name: db.password
+              value: "shopizer_db_password"
+            - name: elasticsearch.security.password
+              value: "NOTREQUIRED"
+            - name: config.cms.contentUrl
+              value: "http://localhost:8080"
+            - name: config.cms.method
+              value: "default"
+            - name: elasticsearch.server.host
+              value: "http://localhost"
+            - name: elasticsearch.server.port
+              value: "9200"
+          ports:
+            - containerPort: 8080
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: shopizer
+spec:
+  ports:
+    - port: 8080
+  selector:
+    app: shopizer
+  type: NodePort
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shopizer-admin
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: shopizer-admin
+  template:
+    metadata:
+      labels:
+        app: shopizer-admin
+    spec:
+      containers:
+        - name: shopizer-admin
+          image: shopizerecomm/shopizer-admin:latest
+          env:
+            - name: APP_BASE_URL
+              value: "http://shopizer:8080/api"
+          ports:
+            - containerPort: 80
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: shopizer-admin
+spec:
+  ports:
+    - port: 80
+  selector:
+    app: shopizer-admin
+  type: NodePort
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shopizer-shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: shopizer-shop
+  template:
+    metadata:
+      labels:
+        app: shopizer-shop
+    spec:
+      containers:
+        - name: shopizer-shop
+          image: shopizerecomm/shopizer-shop-reactjs:latest
+          env:
+            - name: APP_MERCHANT
+              value: "DEFAULT"
+            - name: APP_BASE_URL
+              value: "http://shopizer:8080"
+          ports:
+            - containerPort: 80
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: shopizer-shop
+spec:
+  ports:
+    - port: 80
+  selector:
+    app: shopizer-shop
+  type: LoadBalancer
