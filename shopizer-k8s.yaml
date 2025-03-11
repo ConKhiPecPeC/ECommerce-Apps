@@ -189,4 +189,4 @@ spec:
     - port: 80
   selector:
     app: shopizer-shop
-  type: LoadBalancer
+  type: NodePort
